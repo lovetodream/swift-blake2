@@ -1,7 +1,8 @@
-public enum Blake2b: Sendable {
+public struct Blake2b: Sendable {
+    public static let OUTBYTES = 64
+
     enum Constants {
         static let BLOCKBYTES = 128
-        static let OUTBYTES = 64
         static let KEYBYTES = 64
         static let SALTBYTES = 16
         static let PERSONALBYTES = 16
@@ -65,9 +66,15 @@ public enum Blake2b: Sendable {
         [ 14, 10,  4,  8,  9, 15, 13,  6,  1, 12,  0,  2, 11,  7,  5,  3 ]
     ]
 
-    private static func incrementCounter(in state: inout State, by inc: UInt64) {
-        state.t[0] += inc
-        state.t[1] += state.t[0] < inc ? 1 : 0
+    private var state: State! // guaranteed to be initialized in init by call to initialize function
+
+    public init(key: [UInt8]?, outLength: Int = Self.OUTBYTES, salt: [UInt8]? = nil, personal: [UInt8]? = nil) {
+        self.initialize(outLength: outLength, key: key, salt: salt, personal: personal)
+    }
+
+    private mutating func incrementCounter(by inc: UInt64) {
+        self.state.t[0] += inc
+        self.state.t[1] += self.state.t[0] < inc ? 1 : 0
     }
 
     private static func g(
@@ -98,51 +105,51 @@ public enum Blake2b: Sendable {
         self.g(r, 7, 3, 4,  9, 14, v: &v, m: m)
     }
 
-    private static func compress(ctx: inout State) {
+    private mutating func compress() {
         var m = [UInt64](repeating: 0, count: 16)
         var v = [UInt64](repeating: 0, count: 16)
 
         for i in 0..<16 {
-            m[i] = load64(ctx.buf, i: i * MemoryLayout.size(ofValue: m[i]))
+            m[i] = load64(self.state.buf, i: i * MemoryLayout.size(ofValue: m[i]))
         }
 
         for i in 0..<8 {
-            v[i] = ctx.h[i]
+            v[i] = self.state.h[i]
         }
 
-        v[8] = self.iv[0]
-        v[9] = self.iv[1]
-        v[10] = self.iv[2]
-        v[11] = self.iv[3]
-        v[12] = self.iv[4] ^ ctx.t[0]
-        v[13] = self.iv[5] ^ ctx.t[1]
-        v[14] = self.iv[6] ^ ctx.f[0]
-        v[15] = self.iv[7] ^ ctx.f[1]
+        v[8] =  Self.iv[0]
+        v[9] =  Self.iv[1]
+        v[10] = Self.iv[2]
+        v[11] = Self.iv[3]
+        v[12] = Self.iv[4] ^ self.state.t[0]
+        v[13] = Self.iv[5] ^ self.state.t[1]
+        v[14] = Self.iv[6] ^ self.state.f[0]
+        v[15] = Self.iv[7] ^ self.state.f[1]
 
-        self.round(0, v: &v, m: m)
-        self.round(1, v: &v, m: m)
-        self.round(2, v: &v, m: m)
-        self.round(3, v: &v, m: m)
-        self.round(4, v: &v, m: m)
-        self.round(5, v: &v, m: m)
-        self.round(6, v: &v, m: m)
-        self.round(7, v: &v, m: m)
-        self.round(8, v: &v, m: m)
-        self.round(9, v: &v, m: m)
-        self.round(10, v: &v, m: m)
-        self.round(11, v: &v, m: m)
+        Self.round(0, v: &v, m: m)
+        Self.round(1, v: &v, m: m)
+        Self.round(2, v: &v, m: m)
+        Self.round(3, v: &v, m: m)
+        Self.round(4, v: &v, m: m)
+        Self.round(5, v: &v, m: m)
+        Self.round(6, v: &v, m: m)
+        Self.round(7, v: &v, m: m)
+        Self.round(8, v: &v, m: m)
+        Self.round(9, v: &v, m: m)
+        Self.round(10, v: &v, m: m)
+        Self.round(11, v: &v, m: m)
 
         for i in 0..<8 {
-            ctx.h[i] = ctx.h[i] ^ v[i] ^ v[i + 8]
+            self.state.h[i] = self.state.h[i] ^ v[i] ^ v[i + 8]
         }
     }
 
-    private static func initialize(outLength: Int, key: [UInt8]?, salt: [UInt8]?, personal: [UInt8]?) -> State {
+    private mutating func initialize(outLength: Int, key: [UInt8]?, salt: [UInt8]?, personal: [UInt8]?) {
         assert(
-            outLength != 0 && outLength <= Constants.OUTBYTES,
+            outLength != 0 && outLength <= Self.OUTBYTES,
             """
             Illegal output length expected length to be within range \
-            0...\(Constants.OUTBYTES), but actual length is \(outLength).
+            0...\(Self.OUTBYTES), but actual length is \(outLength).
             """
         )
         assert(
@@ -171,7 +178,7 @@ public enum Blake2b: Sendable {
 
         var ctx = State()
         ctx.outLength = outLength
-        var parameterBlock = self.parameterBlock
+        var parameterBlock = Self.parameterBlock
         parameterBlock[0] = UInt8(outLength)
         if let key {
             parameterBlock[1] = UInt8(key.count)
@@ -187,60 +194,60 @@ public enum Blake2b: Sendable {
 
         // init hash state
         for i in 0..<8 {
-            ctx.h[i] = self.iv[i] ^ load64(parameterBlock, i: i * MemoryLayout.size(ofValue: ctx.h[i]))
+            ctx.h[i] = Self.iv[i] ^ load64(parameterBlock, i: i * MemoryLayout.size(ofValue: ctx.h[i]))
         }
+
+        self.state = ctx
 
         // key hash, if needed
         if let key, !key.isEmpty {
-            self.update(ctx: &ctx, input: key)
-            ctx.c = 128
+            self.update(input: key)
+            self.state.c = 128
         }
-
-        return ctx
     }
 
-    private static func update(ctx: inout State, input: [UInt8]) {
+    public mutating func update(input: [UInt8]) {
         for i in 0..<input.count {
-            if ctx.c == 128 {
+            if self.state.c == 128 {
                 // buffer full?
-                self.incrementCounter(in: &ctx, by: UInt64(Constants.BLOCKBYTES))
-                self.compress(ctx: &ctx)
-                ctx.c = 0
+                self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
+                self.compress()
+                self.state.c = 0
             }
-            ctx.buf[ctx.c] = input[i]
-            ctx.c += 1
+            self.state.buf[self.state.c] = input[i]
+            self.state.c += 1
         }
     }
 
-    private static func finalize(ctx: inout State) -> [UInt8] {
-        self.incrementCounter(in: &ctx, by: UInt64(ctx.c)) // mark last block offset
+    public mutating func finalize() -> [UInt8] {
+        self.incrementCounter(by: UInt64(self.state.c)) // mark last block offset
 
-        while ctx.c < 128 {
-            ctx.buf[ctx.c] = 0
-            ctx.c += 1
+        while self.state.c < 128 {
+            self.state.buf[self.state.c] = 0
+            self.state.c += 1
         }
 
         // indicate last block
-        ctx.f[0] = UInt64.max
-        self.compress(ctx: &ctx)
+        self.state.f[0] = UInt64.max
+        self.compress()
 
-        var out = [UInt8](repeating: 0, count: ctx.outLength)
-        for i in 0..<ctx.outLength {
-            out[i] = UInt8((ctx.h[i >> 3] >> (8 * (i & 7))) & 0xFF)
+        var out = [UInt8](repeating: 0, count: self.state.outLength)
+        for i in 0..<self.state.outLength {
+            out[i] = UInt8((self.state.h[i >> 3] >> (8 * (i & 7))) & 0xFF)
         }
         return out
     }
 
-    static func hash(
-        input: [UInt8], 
+    public static func hash(
+        input: [UInt8],
         key: [UInt8]?,
-        outLength: Int = Constants.OUTBYTES,
+        outLength: Int = Self.OUTBYTES,
         salt: [UInt8]? = nil,
         personal: [UInt8]? = nil
     ) -> [UInt8] {
-        var ctx = self.initialize(outLength: outLength, key: key, salt: salt, personal: personal)
-        self.update(ctx: &ctx, input: input)
-        return self.finalize(ctx: &ctx)
+        var hasher = Blake2b(key: key, outLength: outLength, salt: salt, personal: personal)
+        hasher.update(input: input)
+        return hasher.finalize()
     }
 }
 
