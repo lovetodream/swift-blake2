@@ -68,7 +68,7 @@ final class Resources {
 
     func blake2testCases() -> [Blake2TestCase] {
         guard let b2k = self.blake2kat else {
-            let data = try! Data(contentsOf: self.fileUrl(name: "TestVectors/blake2-kat.json"))
+            let data = try! Data(contentsOf: self.fileUrl(name: "blake2-kat.json"))
             let decoder = JSONDecoder()
             decoder.dataDecodingStrategy = .hex
             self.blake2kat = try! decoder.decode([Blake2TestCase].self, from: data)

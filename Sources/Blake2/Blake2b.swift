@@ -77,40 +77,42 @@ public struct Blake2b: Sendable {
         self.state.t[1] += self.state.t[0] < inc ? 1 : 0
     }
 
-    private static func g(
-        _ r: Int, _ i: Int,
-        _ a: Int, _ b: Int, _ c: Int, _ d: Int,
-        v: inout [UInt64],
-        m: [UInt64]
-    ) {
-
-        v[a] = v[a] &+ v[b] &+ m[Int(self.sigma[r][2 * i + 0])]
-        v[d] = rotr64(v[d] ^ v[a], 32)
-        v[c] = v[c] &+ v[d]
-        v[b] = rotr64(v[b] ^ v[c], 24)
-        v[a] = v[a] &+ v[b] &+ m[Int(self.sigma[r][2 * i + 1])]
-        v[d] = rotr64(v[d] ^ v[a], 16)
-        v[c] = v[c] &+ v[d]
-        v[b] = rotr64(v[b] ^ v[c], 63)
-    }
-
-    private static func round(_ r: Int, v: inout [UInt64], m: [UInt64]) {
-        self.g(r, 0, 0, 4,  8, 12, v: &v, m: m)
-        self.g(r, 1, 1, 5,  9, 13, v: &v, m: m)
-        self.g(r, 2, 2, 6, 10, 14, v: &v, m: m)
-        self.g(r, 3, 3, 7, 11, 15, v: &v, m: m)
-        self.g(r, 4, 0, 5, 10, 15, v: &v, m: m)
-        self.g(r, 5, 1, 6, 11, 12, v: &v, m: m)
-        self.g(r, 6, 2, 7,  8, 13, v: &v, m: m)
-        self.g(r, 7, 3, 4,  9, 14, v: &v, m: m)
-    }
-
     private mutating func compress() {
+        @inline(__always)
+        func g(
+            _ r: Int, _ i: Int,
+            _ a: inout UInt64, _ b: inout UInt64, _ c: inout UInt64, _ d: inout UInt64
+        ) {
+            a = a &+ b &+ m[Int(Blake2b.sigma[r][2 * i + 0])]
+            d = rotr64(d ^ a, 32)
+            c = c &+ d
+            b = rotr64(b ^ c, 24)
+            a = a &+ b &+ m[Int(Blake2b.sigma[r][2 * i + 1])]
+            d = rotr64(d ^ a, 16)
+            c = c &+ d
+            b = rotr64(b ^ c, 63)
+        }
+
+        @inline(__always)
+        func round(_ r: Int) {
+            v.withUnsafeMutableBufferPointer { p in
+                g(r, 0, &p[0], &p[4], &p[ 8], &p[12])
+                g(r, 1, &p[1], &p[5], &p[ 9], &p[13])
+                g(r, 2, &p[2], &p[6], &p[10], &p[14])
+                g(r, 3, &p[3], &p[7], &p[11], &p[15])
+                g(r, 4, &p[0], &p[5], &p[10], &p[15])
+                g(r, 5, &p[1], &p[6], &p[11], &p[12])
+                g(r, 6, &p[2], &p[7], &p[ 8], &p[13])
+                g(r, 7, &p[3], &p[4], &p[ 9], &p[14])
+            }
+        }
+
+
         var m = [UInt64](repeating: 0, count: 16)
         var v = [UInt64](repeating: 0, count: 16)
 
         for i in 0..<16 {
-            m[i] = load64(self.state.buf, i: i * MemoryLayout.size(ofValue: m[i]))
+            m[i] = load64(self.state.buf, i: i * MemoryLayout<UInt64>.size)
         }
 
         for i in 0..<8 {
@@ -126,18 +128,18 @@ public struct Blake2b: Sendable {
         v[14] = Self.iv[6] ^ self.state.f[0]
         v[15] = Self.iv[7] ^ self.state.f[1]
 
-        Self.round(0, v: &v, m: m)
-        Self.round(1, v: &v, m: m)
-        Self.round(2, v: &v, m: m)
-        Self.round(3, v: &v, m: m)
-        Self.round(4, v: &v, m: m)
-        Self.round(5, v: &v, m: m)
-        Self.round(6, v: &v, m: m)
-        Self.round(7, v: &v, m: m)
-        Self.round(8, v: &v, m: m)
-        Self.round(9, v: &v, m: m)
-        Self.round(10, v: &v, m: m)
-        Self.round(11, v: &v, m: m)
+        round( 0)
+        round( 1)
+        round( 2)
+        round( 3)
+        round( 4)
+        round( 5)
+        round( 6)
+        round( 7)
+        round( 8)
+        round( 9)
+        round(10)
+        round(11)
 
         for i in 0..<8 {
             self.state.h[i] = self.state.h[i] ^ v[i] ^ v[i + 8]
@@ -194,7 +196,7 @@ public struct Blake2b: Sendable {
 
         // init hash state
         for i in 0..<8 {
-            ctx.h[i] = Self.iv[i] ^ load64(parameterBlock, i: i * MemoryLayout.size(ofValue: ctx.h[i]))
+            ctx.h[i] = Self.iv[i] ^ load64(parameterBlock, i: i * MemoryLayout<UInt64>.size)
         }
 
         self.state = ctx
@@ -222,7 +224,7 @@ public struct Blake2b: Sendable {
     public mutating func finalize() -> [UInt8] {
         self.incrementCounter(by: UInt64(self.state.c)) // mark last block offset
 
-        while self.state.c < 128 {
+        while self.state.c < Constants.BLOCKBYTES {
             self.state.buf[self.state.c] = 0
             self.state.c += 1
         }
