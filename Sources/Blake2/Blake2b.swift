@@ -204,13 +204,13 @@ public struct Blake2b: Sendable {
         // key hash, if needed
         if let key, !key.isEmpty {
             self.update(input: key)
-            self.state.c = 128
+            self.state.c = Constants.BLOCKBYTES
         }
     }
 
     public mutating func update(input: [UInt8]) {
         for i in 0..<input.count {
-            if self.state.c == 128 {
+            if self.state.c == Constants.BLOCKBYTES {
                 // buffer full?
                 self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
                 self.compress()
@@ -253,8 +253,8 @@ public struct Blake2b: Sendable {
     }
 }
 
-@inlinable
-func load64(_ src: [UInt8], i: Int) -> UInt64 {
+@inline(__always)
+private func load64(_ src: [UInt8], i: Int) -> UInt64 {
     let p = src[i..<(i + 8)]
     // had to split one out so the compiler can type check in time
     let p1 = UInt64(p[i + 0]) << 0
@@ -268,7 +268,7 @@ func load64(_ src: [UInt8], i: Int) -> UInt64 {
     (UInt64(p[i + 7]) << 56)
 }
 
-@inlinable
-func rotr64(_ w: UInt64, _ c: UInt8) -> UInt64 {
+@inline(__always)
+private func rotr64(_ w: UInt64, _ c: UInt8) -> UInt64 {
     (w >> c) | (w << (64 - c))
 }
