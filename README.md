@@ -5,7 +5,7 @@ A pure Swift implementation of BLAKE2.
 [RFC 7693: The BLAKE2 Cryptographic Hash and Message Authentication Code (MAC)](https://datatracker.ietf.org/doc/html/rfc7693)
 
 If you don't want to add yet another dependency to your project, you can copy the file
-`[BLAKE2b.swift](https://github.com/lovetodream/swift-blake2/blob/main/Sources/BLAKE2/BLAKE2b.swift)`
+[`BLAKE2b.swift`](https://github.com/lovetodream/swift-blake2/blob/main/Sources/BLAKE2/BLAKE2b.swift)
 (Do not remove the license header!).
 
 ## Usage
