@@ -11,7 +11,7 @@ If you don't want to add yet another dependency to your project, you can copy th
 ## Usage
 
 You can compute digest in a single step using the static 
-`hash(data:key:outLength:salt:)` method.
+`hash(data:key:digestLength:salt:)` method.
 
 ```swift
 let digest = try BLAKE2b.hash(data: "hello, world!".data(using: .utf8)!)

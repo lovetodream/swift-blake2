@@ -17,7 +17,7 @@ import protocol Foundation.DataProtocol
 /// An implementation of BLAKE2b hashing.
 ///
 /// You can compute the digest by calling the static 
-/// ``hash(data:key:outLength:salt:)`` method once.
+/// ``hash(data:key:digestLength:salt:)`` method once.
 /// Alternatively, if the data you want to hash is too large to fit in 
 /// memory, you can compute the digest iteratively by creating a
 /// new hash instance, calling the ``update(data:)`` method
@@ -28,7 +28,7 @@ import protocol Foundation.DataProtocol
 /// [RFC7693](https://datatracker.ietf.org/doc/html/rfc7693).
 public struct BLAKE2b: Sendable {
     /// The default length of the computed digest.
-    public static let defaultOutLength = 64
+    public static let defaultDigestLength = 64
 
     @usableFromInline
     enum Constants {
@@ -56,7 +56,7 @@ public struct BLAKE2b: Sendable {
         @usableFromInline
         var c: Int
         @usableFromInline
-        var outLength: Int
+        var digestLength: Int
 
         @usableFromInline
         init() {
@@ -65,7 +65,7 @@ public struct BLAKE2b: Sendable {
             self.t = .init(repeating: 0, count: 2)
             self.f = .init(repeating: 0, count: 2)
             self.c = 0
-            self.outLength = 0
+            self.digestLength = 0
         }
     }
 
@@ -91,8 +91,10 @@ public struct BLAKE2b: Sendable {
 
     @usableFromInline
     static let iv: [UInt64] = [
-        0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
-        0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179
+        0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 
+        0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
+        0x510e527fade682d1, 0x9b05688c2b3e6c1f, 
+        0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
     ]
 
     @usableFromInline
@@ -112,7 +114,7 @@ public struct BLAKE2b: Sendable {
     ]
 
     @usableFromInline
-    var state: State! // guaranteed to be initialized in init by call to initialize function
+    var state: State! // this is guaranteed to be present
 
     /// Creates a BLAKE2b hash function.
     ///
@@ -123,22 +125,22 @@ public struct BLAKE2b: Sendable {
     /// all the data, call ``finalize()`` to get the digest.
     ///
     /// If your data fits into a single buffer, you can use the 
-    /// ``hash(data:key:outLength:salt:)`` method instead,
+    /// ``hash(data:key:digestLength:salt:)`` method instead,
     /// to compute the digest in a single call.
     ///
     /// - Parameters:
     ///   - key: An optional key, used to compute the digest.
-    ///   - outLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
+    ///   - digestLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
     ///   - salt: An optional salt, its length must be exactly `16` bytes.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
     public init<K: DataProtocol, S: DataProtocol>(
         key: K? = Optional<Data>.none,
-        outLength: Int = BLAKE2b.defaultOutLength,
+        digestLength: Int = BLAKE2b.defaultDigestLength,
         salt: S? = Optional<Data>.none
     ) throws {
         try self.initialize(
-            outLength: outLength,
+            digestLength: digestLength,
             key: key,
             salt: salt,
             personal: Optional<Data>.none
@@ -155,8 +157,12 @@ public struct BLAKE2b: Sendable {
     mutating func compress() {
         @inline(__always)
         func g(
-            _ r: Int, _ i: Int,
-            _ a: inout UInt64, _ b: inout UInt64, _ c: inout UInt64, _ d: inout UInt64
+            _ r: Int, 
+            _ i: Int,
+            _ a: inout UInt64,
+            _ b: inout UInt64,
+            _ c: inout UInt64,
+            _ d: inout UInt64
         ) {
             a = a &+ b &+ m[Int(BLAKE2b.sigma[r][2 * i + 0])]
             d = rotr64(d ^ a, 32)
@@ -223,12 +229,14 @@ public struct BLAKE2b: Sendable {
 
     @inlinable
     mutating func initialize<K: DataProtocol, S: DataProtocol, P: DataProtocol>(
-        outLength: Int,
+        digestLength: Int,
         key: K?,
         salt: S?,
         personal: P?
     ) throws {
-        guard outLength != 0 && outLength <= Self.defaultOutLength else {
+        guard 
+            digestLength != 0 && digestLength <= Self.defaultDigestLength
+        else {
             throw BLAKE2Error.incorrectParameterSize
         }
         guard key?.count ?? 0 <= Constants.KEYBYTES else {
@@ -244,9 +252,9 @@ public struct BLAKE2b: Sendable {
         }
 
         var ctx = State()
-        ctx.outLength = outLength
+        ctx.digestLength = digestLength
         var parameterBlock = Self.parameterBlock
-        parameterBlock[0] = UInt8(outLength)
+        parameterBlock[0] = UInt8(digestLength)
         if let key {
             parameterBlock[1] = UInt8(key.count)
         }
@@ -261,7 +269,8 @@ public struct BLAKE2b: Sendable {
 
         // init hash state
         for i in 0..<8 {
-            ctx.h[i] = Self.iv[i] ^ load64(parameterBlock, i: i * MemoryLayout<UInt64>.size)
+            ctx.h[i] = Self.iv[i] ^ 
+                load64(parameterBlock, i: i * MemoryLayout<UInt64>.size)
         }
 
         self.state = ctx
@@ -303,11 +312,12 @@ public struct BLAKE2b: Sendable {
     /// data to hash by making one or more calls to the ``update(data:)``
     /// method. After finalizing the hash function, discard it. To compute a new
     ///  digest, create a new hash function with a call to the
-    ///  ``init(key:outLength:salt:)`` method.
+    ///  ``init(key:digestLength:salt:)`` method.
     ///
     /// - Returns: The computed digest of the data.
     public mutating func finalize() -> Data {
-        self.incrementCounter(by: UInt64(self.state.c)) // mark last block offset
+        // mark last block offset
+        self.incrementCounter(by: UInt64(self.state.c))
 
         while self.state.c < Constants.BLOCKBYTES {
             self.state.buf[self.state.c] = 0
@@ -318,8 +328,8 @@ public struct BLAKE2b: Sendable {
         self.state.f[0] = UInt64.max
         self.compress()
 
-        var out = Data(repeating: 0, count: self.state.outLength)
-        for i in 0..<self.state.outLength {
+        var out = Data(repeating: 0, count: self.state.digestLength)
+        for i in 0..<self.state.digestLength {
             out[i] = UInt8((self.state.h[i >> 3] >> (8 * (i & 7))) & 0xFF)
         }
         return out
@@ -333,7 +343,7 @@ public struct BLAKE2b: Sendable {
     /// use the ``update(data:)`` and ``finalize()`` methods to
     /// compute the digest in blocks.
     ///
-    /// Per the specification any `outLength` between `1` and `64` is supported, although the
+    /// Per the specification any `digestLength` between `1` and `64` is supported, although the
     /// following map might help to decide on what to use:
     /// - **64**: BLAKE2b-512
     /// - **48**: BLAKE2b-384
@@ -342,18 +352,22 @@ public struct BLAKE2b: Sendable {
     /// - Parameters:
     ///   - data: The data to be hashed.
     ///   - key: An optional key, used to compute the digest.
-    ///   - outLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
+    ///   - digestLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
     ///   - salt: An optional salt, its length must be exactly `16` bytes.
-    /// - Returns: The computed digest of the data in the specified `outLength`.
+    /// - Returns: The computed digest of the data in the specified `digestLength`.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
     public static func hash<D: DataProtocol, K: DataProtocol, S: DataProtocol>(
         data: D,
         key: K? = Optional<Data>.none,
-        outLength: Int = Self.defaultOutLength,
+        digestLength: Int = Self.defaultDigestLength,
         salt: S? = Optional<Data>.none
     ) throws -> Data {
-        var hasher = try BLAKE2b(key: key, outLength: outLength, salt: salt)
+        var hasher = try BLAKE2b(
+            key: key,
+            digestLength: digestLength,
+            salt: salt
+        )
         hasher.update(data: data)
         return hasher.finalize()
     }
