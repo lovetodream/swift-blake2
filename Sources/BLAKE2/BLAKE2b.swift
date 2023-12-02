@@ -129,7 +129,7 @@ public struct BLAKE2b: Sendable {
     /// - Parameters:
     ///   - key: An optional key, used to compute the digest.
     ///   - outLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
-    ///   - salt: An optional salt, its length must be within the range `0...16`.
+    ///   - salt: An optional salt, its length must be exactly `16` bytes.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
     public init<K: DataProtocol, S: DataProtocol>(
@@ -343,7 +343,7 @@ public struct BLAKE2b: Sendable {
     ///   - data: The data to be hashed.
     ///   - key: An optional key, used to compute the digest.
     ///   - outLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
-    ///   - salt: An optional salt, its length must be within the range `0...16`.
+    ///   - salt: An optional salt, its length must be exactly `16` bytes.
     /// - Returns: The computed digest of the data in the specified `outLength`.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
