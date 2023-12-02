@@ -129,7 +129,7 @@ public struct BLAKE2b: Sendable {
     /// to compute the digest in a single call.
     ///
     /// - Parameters:
-    ///   - key: An optional key, used to compute the digest.
+    ///   - key: An optional key, used to compute the digest. It's byte count has to be less or equal `64`.
     ///   - digestLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
     ///   - salt: An optional salt, its length must be exactly `16` bytes.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
@@ -351,7 +351,7 @@ public struct BLAKE2b: Sendable {
     ///
     /// - Parameters:
     ///   - data: The data to be hashed.
-    ///   - key: An optional key, used to compute the digest.
+    ///   - key: An optional key, used to compute the digest. It's byte count has to be less or equal `64`.
     ///   - digestLength: The length in bytes, must be within the range `1...64`. Defaults to `64`.
     ///   - salt: An optional salt, its length must be exactly `16` bytes.
     /// - Returns: The computed digest of the data in the specified `digestLength`.
