@@ -1,10 +1,31 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
+
+import Synchronization
 
 struct Blake2TestCase: Decodable {
     let hash: String
-    let `in`: Data
-    let key: Data
-    let out: Data
+    let `in`: [UInt8]
+    let key: [UInt8]
+    let out: [UInt8]
+
+    enum CodingKeys: CodingKey {
+        case hash
+        case `in`
+        case key
+        case out
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.hash = try container.decode(String.self, forKey: .hash)
+        self.in = try Array(container.decode(Data.self, forKey: .in))
+        self.key = try Array(container.decode(Data.self, forKey: .key))
+        self.out = try Array(container.decode(Data.self, forKey: .out))
+    }
 }
 
 extension JSONDecoder.DataDecodingStrategy {
@@ -59,22 +80,25 @@ extension Array where Element == Blake2TestCase {
     var keyed: Self { self.filter { $0.key.count > 0 } }
 }
 
-final class Resources {
-    private var blake2kat: [Blake2TestCase]? = nil
+final class Resources: Sendable {
+    private let blake2kat: Mutex<[Blake2TestCase]?> = Mutex(nil)
 
     func fileUrl(name: String) -> URL {
         Bundle.module.url(forResource: name, withExtension: nil, subdirectory: nil)!
     }
 
     func blake2testCases() -> [Blake2TestCase] {
-        guard let b2k = self.blake2kat else {
-            let data = try! Data(contentsOf: self.fileUrl(name: "TestVectors/blake2-kat.json"))
-            let decoder = JSONDecoder()
-            decoder.dataDecodingStrategy = .hex
-            self.blake2kat = try! decoder.decode([Blake2TestCase].self, from: data)
-            return self.blake2kat!
+        self.blake2kat.withLock { blake2kat in
+            guard let b2k = blake2kat else {
+                let data = try! Data(contentsOf: self.fileUrl(name: "TestVectors/blake2-kat.json"))
+                let decoder = JSONDecoder()
+                decoder.dataDecodingStrategy = .hex
+                let decoded = try! decoder.decode([Blake2TestCase].self, from: data)
+                blake2kat = decoded
+                return decoded
+            }
+            return b2k
         }
-        return b2k
     }
 
     static let inst = Resources()

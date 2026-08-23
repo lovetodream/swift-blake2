@@ -11,9 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import struct Foundation.Data
-import protocol Foundation.DataProtocol
-
 /// An implementation of BLAKE2b hashing.
 ///
 /// You can compute the digest by calling the static 
@@ -134,16 +131,16 @@ public struct BLAKE2b: Sendable {
     ///   - salt: An optional salt, its length must be exactly `16` bytes.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
-    public init<K: DataProtocol, S: DataProtocol>(
-        key: K? = Optional<Data>.none,
+    public init(
+        key: Span<UInt8>? = nil,
         digestLength: Int = BLAKE2b.defaultDigestLength,
-        salt: S? = Optional<Data>.none
+        salt: Span<UInt8>? = nil
     ) throws {
         try self.initialize(
             digestLength: digestLength,
             key: key,
             salt: salt,
-            personal: Optional<Data>.none
+            personal: Span<UInt8>?.none
         )
     }
 
@@ -228,11 +225,11 @@ public struct BLAKE2b: Sendable {
     }
 
     @inlinable
-    mutating func initialize<K: DataProtocol, S: DataProtocol, P: DataProtocol>(
+    mutating func initialize(
         digestLength: Int,
-        key: K?,
-        salt: S?,
-        personal: P?
+        key: Span<UInt8>?,
+        salt: Span<UInt8>?,
+        personal: Span<UInt8>?
     ) throws {
         guard 
             digestLength != 0 && digestLength <= Self.defaultDigestLength
@@ -261,10 +258,14 @@ public struct BLAKE2b: Sendable {
         parameterBlock[2] = 1 // fanout
         parameterBlock[3] = 1 // depth
         if let salt {
-            parameterBlock[32..<(32 + salt.count)] = ArraySlice(salt)
+            for i in 0..<salt.count {
+                parameterBlock[32 + i] = salt[i]
+            }
         }
         if let personal {
-            parameterBlock[48..<(48 + personal.count)] = ArraySlice(personal)
+            for i in 0..<personal.count {
+                parameterBlock[48 + i] = personal[i]
+            }
         }
 
         // init hash state
@@ -293,15 +294,15 @@ public struct BLAKE2b: Sendable {
     /// - Parameter data: The next block of data for the ongoing
     /// digest calculation.
     @inlinable
-    public mutating func update<D: DataProtocol>(data: D) {
-        for i in data.indices {
+    public mutating func update(data: Span<UInt8>) {
+        for byte in data.indices {
             if self.state.c == Constants.BLOCKBYTES {
                 // buffer full?
                 self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
                 self.compress()
                 self.state.c = 0
             }
-            self.state.buf[self.state.c] = data[i]
+            self.state.buf[self.state.c] = data[byte]
             self.state.c += 1
         }
     }
@@ -315,7 +316,7 @@ public struct BLAKE2b: Sendable {
     ///  ``init(key:digestLength:salt:)`` method.
     ///
     /// - Returns: The computed digest of the data.
-    public mutating func finalize() -> Data {
+    public mutating func finalize() -> [UInt8] {
         // mark last block offset
         self.incrementCounter(by: UInt64(self.state.c))
 
@@ -328,7 +329,7 @@ public struct BLAKE2b: Sendable {
         self.state.f[0] = UInt64.max
         self.compress()
 
-        var out = Data(repeating: 0, count: self.state.digestLength)
+        var out = Array(repeating: UInt8(0), count: self.state.digestLength)
         for i in 0..<self.state.digestLength {
             out[i] = UInt8((self.state.h[i >> 3] >> (8 * (i & 7))) & 0xFF)
         }
@@ -357,12 +358,12 @@ public struct BLAKE2b: Sendable {
     /// - Returns: The computed digest of the data in the specified `digestLength`.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
-    public static func hash<D: DataProtocol, K: DataProtocol, S: DataProtocol>(
-        data: D,
-        key: K? = Optional<Data>.none,
+    public static func hash(
+        data: Span<UInt8>,
+        key: Span<UInt8>? = nil,
         digestLength: Int = Self.defaultDigestLength,
-        salt: S? = Optional<Data>.none
-    ) throws -> Data {
+        salt: Span<UInt8>? = nil
+    ) throws -> [UInt8] {
         var hasher = try BLAKE2b(
             key: key,
             digestLength: digestLength,
