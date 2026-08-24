@@ -76,6 +76,5 @@ final class Resources {
         }
         return b2k
     }
-
-    static let inst = Resources()
+    nonisolated(unsafe) static let inst = Resources()
 }
