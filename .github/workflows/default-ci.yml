@@ -1,4 +1,4 @@
-name: Build & Test
+name: CI
 
 on:
   push:
@@ -12,8 +12,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y zstd
+    - name: Restore .build
+      id: "restore-build"
+      uses: actions/cache/restore@v4
+      with:
+        path: .build
+        key: "swiftpm-tests-build-${{ runner.os }}-${{ github.event.pull_request.base.sha || github.event.after }}"
+        restore-keys: "swiftpm-tests-build-${{ runner.os }}-"
+    
     - name: Build
-      run: swift build
+      run: swift build --build-tests --enable-code-coverage
+
+    - name: Cache .build
+      if: steps.restore-build.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: .build
+        key: "swiftpm-tests-build-${{ runner.os }}-${{ github.event.pull_request.base.sha || github.event.after }}"
+
     - name: Run tests
-      run: swift test
+      run: swift test --skip-build --enable-code-coverage --parallel

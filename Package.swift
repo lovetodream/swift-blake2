@@ -16,3 +16,23 @@ let package = Package(
         ),
     ]
 )
+
+if Context.environment["ENABLE_BLAKE2_BENCHMARKS"] != nil {
+    package.platforms = [.macOS(.v26)]
+    package.dependencies.append(
+        .package(url: "https://github.com/ordo-one/benchmark", from: "1.0.0")
+    )
+    package.targets.append(
+        .executableTarget(
+            name: "BLAKE2Benchmarks",
+            dependencies: [
+                .product(name: "Benchmark", package: "benchmark"),
+                "BLAKE2",
+            ],
+            path: "Benchmarks/BLAKE2Benchmarks",
+            plugins: [
+                .plugin(name: "BenchmarkPlugin", package: "benchmark")
+            ]
+        )
+    )
+}
