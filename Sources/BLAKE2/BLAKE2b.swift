@@ -25,7 +25,8 @@
 /// [RFC7693](https://datatracker.ietf.org/doc/html/rfc7693).
 public struct BLAKE2b: Sendable {
     /// The default length of the computed digest.
-    public static var defaultDigestLength: Int { 64 }
+    @usableFromInline
+    static var defaultDigestLength: Int { 64 }
 
     @usableFromInline
     enum Constants {
