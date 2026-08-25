@@ -167,22 +167,6 @@ public struct BLAKE2b: Sendable {
             b = rotr64(b ^ c, 63)
         }
 
-        @inline(__always)
-        func round(_ r: Int) {
-            withUnsafeMutableBytes(of: &v) { rawBytes in
-                let p = rawBytes.bindMemory(to: UInt64.self)
-
-                g(r, 0, &p[0], &p[4], &p[ 8], &p[12])
-                g(r, 1, &p[1], &p[5], &p[ 9], &p[13])
-                g(r, 2, &p[2], &p[6], &p[10], &p[14])
-                g(r, 3, &p[3], &p[7], &p[11], &p[15])
-                g(r, 4, &p[0], &p[5], &p[10], &p[15])
-                g(r, 5, &p[1], &p[6], &p[11], &p[12])
-                g(r, 6, &p[2], &p[7], &p[ 8], &p[13])
-                g(r, 7, &p[3], &p[4], &p[ 9], &p[14])
-            }
-        }
-
 
         var m = [16 of UInt64](repeating: 0)
         var v = [16 of UInt64](repeating: 0)
@@ -204,18 +188,34 @@ public struct BLAKE2b: Sendable {
         v[14] = Self.iv[6] ^ self.state.f.0
         v[15] = Self.iv[7] ^ self.state.f.1
 
-        round( 0)
-        round( 1)
-        round( 2)
-        round( 3)
-        round( 4)
-        round( 5)
-        round( 6)
-        round( 7)
-        round( 8)
-        round( 9)
-        round(10)
-        round(11)
+        withUnsafeMutableBytes(of: &v) { rawBytes in
+            let p = rawBytes.baseAddress.unsafelyUnwrapped.assumingMemoryBound(to: UInt64.self)
+
+            @inline(__always)
+            func round(_ r: Int) {
+                g(r, 0, &p[0], &p[4], &p[ 8], &p[12])
+                g(r, 1, &p[1], &p[5], &p[ 9], &p[13])
+                g(r, 2, &p[2], &p[6], &p[10], &p[14])
+                g(r, 3, &p[3], &p[7], &p[11], &p[15])
+                g(r, 4, &p[0], &p[5], &p[10], &p[15])
+                g(r, 5, &p[1], &p[6], &p[11], &p[12])
+                g(r, 6, &p[2], &p[7], &p[ 8], &p[13])
+                g(r, 7, &p[3], &p[4], &p[ 9], &p[14])
+            }
+
+            round( 0)
+            round( 1)
+            round( 2)
+            round( 3)
+            round( 4)
+            round( 5)
+            round( 6)
+            round( 7)
+            round( 8)
+            round( 9)
+            round(10)
+            round(11)
+        }
 
         for i in 0..<8 {
             self.state.h[i] = self.state.h[i] ^ v[i] ^ v[i + 8]
@@ -316,18 +316,30 @@ public struct BLAKE2b: Sendable {
     /// digest calculation.
     @inlinable
     public mutating func update(data: Span<UInt8>) {
-        for byte in data.indices {
+        var offset = 0
+        let totalCount = data.count
+
+        while offset < totalCount {
+            let spaceLeft = Constants.BLOCKBYTES - self.state.c
+
+            let dataLeft = totalCount - offset
+            let amountToCopy = min(spaceLeft, dataLeft)
+
+            for i in 0..<amountToCopy {
+                self.state.buf[self.state.c + i] = data[offset + i]
+            }
+
+            self.state.c += amountToCopy
+            offset += amountToCopy
+
             if self.state.c == Constants.BLOCKBYTES {
-                // buffer full?
                 self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
                 self.compress()
                 self.state.c = 0
             }
-            self.state.buf[self.state.c] = data[byte]
-            self.state.c += 1
         }
     }
-    
+
     /// Finalizes the hash function and returns the computed digest.
     ///
     /// Call this method after you provide the hash function with all the
