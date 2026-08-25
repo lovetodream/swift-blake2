@@ -320,8 +320,13 @@ public struct BLAKE2b: Sendable {
         let totalCount = data.count
 
         while offset < totalCount {
-            let spaceLeft = Constants.BLOCKBYTES - self.state.c
+            if self.state.c == Constants.BLOCKBYTES {
+                self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
+                self.compress()
+                self.state.c = 0
+            }
 
+            let spaceLeft = Constants.BLOCKBYTES - self.state.c
             let dataLeft = totalCount - offset
             let amountToCopy = min(spaceLeft, dataLeft)
 
@@ -331,12 +336,6 @@ public struct BLAKE2b: Sendable {
 
             self.state.c += amountToCopy
             offset += amountToCopy
-
-            if self.state.c == Constants.BLOCKBYTES {
-                self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
-                self.compress()
-                self.state.c = 0
-            }
         }
     }
 
