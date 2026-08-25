@@ -11,9 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import struct Foundation.Data
-import protocol Foundation.DataProtocol
-
 /// An implementation of BLAKE2b hashing.
 ///
 /// You can compute the digest by calling the static 
@@ -28,30 +25,30 @@ import protocol Foundation.DataProtocol
 /// [RFC7693](https://datatracker.ietf.org/doc/html/rfc7693).
 public struct BLAKE2b: Sendable {
     /// The default length of the computed digest.
-    public static let defaultDigestLength = 64
+    public static var defaultDigestLength: Int { 64 }
 
     @usableFromInline
     enum Constants {
         @usableFromInline
-        static let BLOCKBYTES = 128
+        static var BLOCKBYTES: Int { 128 }
         @usableFromInline
-        static let KEYBYTES = 64
+        static var KEYBYTES: Int { 64 }
         @usableFromInline
-        static let SALTBYTES = 16
+        static var SALTBYTES: Int { 16 }
         @usableFromInline
-        static let PERSONALBYTES = 16
+        static var PERSONALBYTES: Int { 16 }
     }
 
     @usableFromInline
     struct State: Sendable {
         @usableFromInline
-        var buf: [UInt8]
+        var buf: [128 of UInt8] // Constants.BLOCKBYTES
         @usableFromInline
-        var h: [UInt64]
+        var h: [8 of UInt64]
         @usableFromInline
-        var t: [UInt64]
+        var t: (UInt64, UInt64)
         @usableFromInline
-        var f: [UInt64]
+        var f: (UInt64, UInt64)
         /// Pointer in ``buf``.
         @usableFromInline
         var c: Int
@@ -60,58 +57,54 @@ public struct BLAKE2b: Sendable {
 
         @usableFromInline
         init() {
-            self.buf = .init(repeating: 0, count: Constants.BLOCKBYTES)
-            self.h = .init(repeating: 0, count: 8)
-            self.t = .init(repeating: 0, count: 2)
-            self.f = .init(repeating: 0, count: 2)
+            self.buf = .init(repeating: 0)
+            self.h = .init(repeating: 0)
+            self.t = (0, 0)
+            self.f = (0, 0)
             self.c = 0
             self.digestLength = 0
         }
     }
 
     @usableFromInline
-    static let parameterBlock: [UInt8] = [
-        0, 0, 0, 0, //  0: outlen, keylen, fanout, depth
-        0, 0, 0, 0, //  4: leaf length, sequential mode
-        0, 0, 0, 0, //  8: node offset
-        0, 0, 0, 0, // 12: node offset
-        0, 0, 0, 0, // 16: node depth, inner length, rfu
-        0, 0, 0, 0, // 20: rfu
-        0, 0, 0, 0, // 24: rfu
-        0, 0, 0, 0, // 28: rfu
-        0, 0, 0, 0, // 32: salt
-        0, 0, 0, 0, // 36: salt
-        0, 0, 0, 0, // 40: salt
-        0, 0, 0, 0, // 44: salt
-        0, 0, 0, 0, // 48: personal
-        0, 0, 0, 0, // 52: personal
-        0, 0, 0, 0, // 56: personal
-        0, 0, 0, 0, // 60: personal
-    ]
+    static var iv: [8 of UInt64] {
+        [
+            0x6a09e667f3bcc908, 0xbb67ae8584caa73b,
+            0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
+            0x510e527fade682d1, 0x9b05688c2b3e6c1f,
+            0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
+        ]
+    }
 
     @usableFromInline
-    static let iv: [UInt64] = [
-        0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 
-        0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
-        0x510e527fade682d1, 0x9b05688c2b3e6c1f, 
-        0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
-    ]
-
-    @usableFromInline
-    static let sigma: [[UInt8]] = [
-        [  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 ],
-        [ 14, 10,  4,  8,  9, 15, 13,  6,  1, 12,  0,  2, 11,  7,  5,  3 ],
-        [ 11,  8, 12,  0,  5,  2, 15, 13, 10, 14,  3,  6,  7,  1,  9,  4 ],
-        [  7,  9,  3,  1, 13, 12, 11, 14,  2,  6,  5, 10,  4,  0, 15,  8 ],
-        [  9,  0,  5,  7,  2,  4, 10, 15, 14,  1, 11, 12,  6,  8,  3, 13 ],
-        [  2, 12,  6, 10,  0, 11,  8,  3,  4, 13,  7,  5, 15, 14,  1,  9 ],
-        [ 12,  5,  1, 15, 14, 13,  4, 10,  0,  7,  6,  3,  9,  2,  8, 11 ],
-        [ 13, 11,  7, 14, 12,  1,  3,  9,  5,  0, 15,  4,  8,  6,  2, 10 ],
-        [  6, 15, 14,  9, 11,  3,  0,  8, 12,  2, 13,  7,  1,  4, 10,  5 ],
-        [ 10,  2,  8,  4,  7,  6,  1,  5, 15, 11,  9, 14,  3, 12, 13 , 0 ],
-        [  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 ],
-        [ 14, 10,  4,  8,  9, 15, 13,  6,  1, 12,  0,  2, 11,  7,  5,  3 ]
-    ]
+    static var sigma: [192 of UInt8] {
+        [
+            // Round 0
+             0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+            // Round 1
+            14, 10,  4,  8,  9, 15, 13,  6,  1, 12,  0,  2, 11,  7,  5,  3,
+            // Round 2
+            11,  8, 12,  0,  5,  2, 15, 13, 10, 14,  3,  6,  7,  1,  9,  4,
+            // Round 3
+             7,  9,  3,  1, 13, 12, 11, 14,  2,  6,  5, 10,  4,  0, 15,  8,
+            // Round 4
+             9,  0,  5,  7,  2,  4, 10, 15, 14,  1, 11, 12,  6,  8,  3, 13,
+            // Round 5
+             2, 12,  6, 10,  0, 11,  8,  3,  4, 13,  7,  5, 15, 14,  1,  9,
+            // Round 6
+            12,  5,  1, 15, 14, 13,  4, 10,  0,  7,  6,  3,  9,  2,  8, 11,
+            // Round 7
+            13, 11,  7, 14, 12,  1,  3,  9,  5,  0, 15,  4,  8,  6,  2, 10,
+            // Round 8
+             6, 15, 14,  9, 11,  3,  0,  8, 12,  2, 13,  7,  1,  4, 10,  5,
+            // Round 9
+            10,  2,  8,  4,  7,  6,  1,  5, 15, 11,  9, 14,  3, 12, 13 , 0,
+            // Round 10
+             0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+            // Round 11
+            14, 10,  4,  8,  9, 15, 13,  6,  1, 12,  0,  2, 11,  7,  5,  3
+        ]
+    }
 
     @usableFromInline
     var state: State! // this is guaranteed to be present
@@ -134,23 +127,23 @@ public struct BLAKE2b: Sendable {
     ///   - salt: An optional salt, its length must be exactly `16` bytes.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
-    public init<K: DataProtocol, S: DataProtocol>(
-        key: K? = Optional<Data>.none,
+    public init(
+        key: Span<UInt8>? = nil,
         digestLength: Int = BLAKE2b.defaultDigestLength,
-        salt: S? = Optional<Data>.none
+        salt: Span<UInt8>? = nil
     ) throws {
         try self.initialize(
             digestLength: digestLength,
             key: key,
             salt: salt,
-            personal: Optional<Data>.none
+            personal: Span<UInt8>?.none
         )
     }
 
     @inlinable
     mutating func incrementCounter(by inc: UInt64) {
-        self.state.t[0] += inc
-        self.state.t[1] += self.state.t[0] < inc ? 1 : 0
+        self.state.t.0 += inc
+        self.state.t.1 += self.state.t.0 < inc ? 1 : 0
     }
 
     @inlinable
@@ -164,33 +157,19 @@ public struct BLAKE2b: Sendable {
             _ c: inout UInt64,
             _ d: inout UInt64
         ) {
-            a = a &+ b &+ m[Int(BLAKE2b.sigma[r][2 * i + 0])]
+            a = a &+ b &+ m[Int(BLAKE2b.sigma[r &* 16 &+ (2 &* i)])]
             d = rotr64(d ^ a, 32)
             c = c &+ d
             b = rotr64(b ^ c, 24)
-            a = a &+ b &+ m[Int(BLAKE2b.sigma[r][2 * i + 1])]
+            a = a &+ b &+ m[Int(BLAKE2b.sigma[r &* 16 &+ (2 &* i &+ 1)])]
             d = rotr64(d ^ a, 16)
             c = c &+ d
             b = rotr64(b ^ c, 63)
         }
 
-        @inline(__always)
-        func round(_ r: Int) {
-            v.withUnsafeMutableBufferPointer { p in
-                g(r, 0, &p[0], &p[4], &p[ 8], &p[12])
-                g(r, 1, &p[1], &p[5], &p[ 9], &p[13])
-                g(r, 2, &p[2], &p[6], &p[10], &p[14])
-                g(r, 3, &p[3], &p[7], &p[11], &p[15])
-                g(r, 4, &p[0], &p[5], &p[10], &p[15])
-                g(r, 5, &p[1], &p[6], &p[11], &p[12])
-                g(r, 6, &p[2], &p[7], &p[ 8], &p[13])
-                g(r, 7, &p[3], &p[4], &p[ 9], &p[14])
-            }
-        }
 
-
-        var m = [UInt64](repeating: 0, count: 16)
-        var v = [UInt64](repeating: 0, count: 16)
+        var m = [16 of UInt64](repeating: 0)
+        var v = [16 of UInt64](repeating: 0)
 
         for i in 0..<16 {
             m[i] = load64(self.state.buf, i: i * MemoryLayout<UInt64>.size)
@@ -204,23 +183,39 @@ public struct BLAKE2b: Sendable {
         v[9] =  Self.iv[1]
         v[10] = Self.iv[2]
         v[11] = Self.iv[3]
-        v[12] = Self.iv[4] ^ self.state.t[0]
-        v[13] = Self.iv[5] ^ self.state.t[1]
-        v[14] = Self.iv[6] ^ self.state.f[0]
-        v[15] = Self.iv[7] ^ self.state.f[1]
+        v[12] = Self.iv[4] ^ self.state.t.0
+        v[13] = Self.iv[5] ^ self.state.t.1
+        v[14] = Self.iv[6] ^ self.state.f.0
+        v[15] = Self.iv[7] ^ self.state.f.1
 
-        round( 0)
-        round( 1)
-        round( 2)
-        round( 3)
-        round( 4)
-        round( 5)
-        round( 6)
-        round( 7)
-        round( 8)
-        round( 9)
-        round(10)
-        round(11)
+        withUnsafeMutableBytes(of: &v) { rawBytes in
+            let p = rawBytes.baseAddress.unsafelyUnwrapped.assumingMemoryBound(to: UInt64.self)
+
+            @inline(__always)
+            func round(_ r: Int) {
+                g(r, 0, &p[0], &p[4], &p[ 8], &p[12])
+                g(r, 1, &p[1], &p[5], &p[ 9], &p[13])
+                g(r, 2, &p[2], &p[6], &p[10], &p[14])
+                g(r, 3, &p[3], &p[7], &p[11], &p[15])
+                g(r, 4, &p[0], &p[5], &p[10], &p[15])
+                g(r, 5, &p[1], &p[6], &p[11], &p[12])
+                g(r, 6, &p[2], &p[7], &p[ 8], &p[13])
+                g(r, 7, &p[3], &p[4], &p[ 9], &p[14])
+            }
+
+            round( 0)
+            round( 1)
+            round( 2)
+            round( 3)
+            round( 4)
+            round( 5)
+            round( 6)
+            round( 7)
+            round( 8)
+            round( 9)
+            round(10)
+            round(11)
+        }
 
         for i in 0..<8 {
             self.state.h[i] = self.state.h[i] ^ v[i] ^ v[i + 8]
@@ -228,11 +223,11 @@ public struct BLAKE2b: Sendable {
     }
 
     @inlinable
-    mutating func initialize<K: DataProtocol, S: DataProtocol, P: DataProtocol>(
+    mutating func initialize(
         digestLength: Int,
-        key: K?,
-        salt: S?,
-        personal: P?
+        key: Span<UInt8>?,
+        salt: Span<UInt8>?,
+        personal: Span<UInt8>?
     ) throws {
         guard 
             digestLength != 0 && digestLength <= Self.defaultDigestLength
@@ -253,7 +248,30 @@ public struct BLAKE2b: Sendable {
 
         var ctx = State()
         ctx.digestLength = digestLength
-        var parameterBlock = Self.parameterBlock
+
+        /// # Parameter block structure:
+        ///
+        /// ```swift
+        /// [
+        ///     0, 0, 0, 0, //  0: outlen, keylen, fanout, depth
+        ///     0, 0, 0, 0, //  4: leaf length, sequential mode
+        ///     0, 0, 0, 0, //  8: node offset
+        ///     0, 0, 0, 0, // 12: node offset
+        ///     0, 0, 0, 0, // 16: node depth, inner length, rfu
+        ///     0, 0, 0, 0, // 20: rfu
+        ///     0, 0, 0, 0, // 24: rfu
+        ///     0, 0, 0, 0, // 28: rfu
+        ///     0, 0, 0, 0, // 32: salt
+        ///     0, 0, 0, 0, // 36: salt
+        ///     0, 0, 0, 0, // 40: salt
+        ///     0, 0, 0, 0, // 44: salt
+        ///     0, 0, 0, 0, // 48: personal
+        ///     0, 0, 0, 0, // 52: personal
+        ///     0, 0, 0, 0, // 56: personal
+        ///     0, 0, 0, 0, // 60: personal
+        /// ]
+        /// ```
+        var parameterBlock = [128 of UInt8](repeating: 0)
         parameterBlock[0] = UInt8(digestLength)
         if let key {
             parameterBlock[1] = UInt8(key.count)
@@ -261,10 +279,14 @@ public struct BLAKE2b: Sendable {
         parameterBlock[2] = 1 // fanout
         parameterBlock[3] = 1 // depth
         if let salt {
-            parameterBlock[32..<(32 + salt.count)] = ArraySlice(salt)
+            for i in 0..<salt.count {
+                parameterBlock[32 + i] = salt[i]
+            }
         }
         if let personal {
-            parameterBlock[48..<(48 + personal.count)] = ArraySlice(personal)
+            for i in 0..<personal.count {
+                parameterBlock[48 + i] = personal[i]
+            }
         }
 
         // init hash state
@@ -293,19 +315,38 @@ public struct BLAKE2b: Sendable {
     /// - Parameter data: The next block of data for the ongoing
     /// digest calculation.
     @inlinable
-    public mutating func update<D: DataProtocol>(data: D) {
-        for i in data.indices {
-            if self.state.c == Constants.BLOCKBYTES {
-                // buffer full?
-                self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
-                self.compress()
-                self.state.c = 0
+    public mutating func update(data: Span<UInt8>) {
+        var offset = 0
+        let totalCount = data.count
+
+        data.withUnsafeBufferPointer { dataPtr in
+            guard let dataBase = dataPtr.baseAddress else { return }
+
+            while offset < totalCount {
+                if self.state.c == Constants.BLOCKBYTES {
+                    self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
+                    self.compress()
+                    self.state.c = 0
+                }
+
+                let currentC = self.state.c
+                let spaceLeft = Constants.BLOCKBYTES - currentC
+                let dataLeft = totalCount - offset
+                let amountToCopy = min(spaceLeft, dataLeft)
+
+                withUnsafeMutableBytes(of: &self.state.buf) { bufRawPtr in
+                    let dest = bufRawPtr.baseAddress!.advanced(by: currentC)
+                    let src = dataBase.advanced(by: offset)
+
+                    dest.copyMemory(from: src, byteCount: amountToCopy)
+                }
+
+                self.state.c += amountToCopy
+                offset += amountToCopy
             }
-            self.state.buf[self.state.c] = data[i]
-            self.state.c += 1
         }
     }
-    
+
     /// Finalizes the hash function and returns the computed digest.
     ///
     /// Call this method after you provide the hash function with all the
@@ -315,7 +356,7 @@ public struct BLAKE2b: Sendable {
     ///  ``init(key:digestLength:salt:)`` method.
     ///
     /// - Returns: The computed digest of the data.
-    public mutating func finalize() -> Data {
+    public mutating func finalize() -> Digest {
         // mark last block offset
         self.incrementCounter(by: UInt64(self.state.c))
 
@@ -325,14 +366,16 @@ public struct BLAKE2b: Sendable {
         }
 
         // indicate last block
-        self.state.f[0] = UInt64.max
+        self.state.f.0 = UInt64.max
         self.compress()
 
-        var out = Data(repeating: 0, count: self.state.digestLength)
-        for i in 0..<self.state.digestLength {
-            out[i] = UInt8((self.state.h[i >> 3] >> (8 * (i & 7))) & 0xFF)
+        var digest = Digest(length: self.state.digestLength)
+        withUnsafeMutableBytes(of: &digest.buffer) { rawBuffer in
+            for i in 0..<self.state.digestLength {
+                rawBuffer[i] = UInt8((self.state.h[i >> 3] >> (8 * (i & 7))) & 0xFF)
+            }
         }
-        return out
+        return digest
     }
 
     /// Computes the BLAKE2b digest of the bytes in the given data and 
@@ -357,12 +400,12 @@ public struct BLAKE2b: Sendable {
     /// - Returns: The computed digest of the data in the specified `digestLength`.
     /// - Throws: ``BLAKE2Error``, if one of the parameters has an invalid length.
     @inlinable
-    public static func hash<D: DataProtocol, K: DataProtocol, S: DataProtocol>(
-        data: D,
-        key: K? = Optional<Data>.none,
+    public static func hash(
+        data: Span<UInt8>,
+        key: Span<UInt8>? = nil,
         digestLength: Int = Self.defaultDigestLength,
-        salt: S? = Optional<Data>.none
-    ) throws -> Data {
+        salt: Span<UInt8>? = nil
+    ) throws -> Digest {
         var hasher = try BLAKE2b(
             key: key,
             digestLength: digestLength,
@@ -374,18 +417,19 @@ public struct BLAKE2b: Sendable {
 }
 
 @inlinable
-func load64(_ src: [UInt8], i: Int) -> UInt64 {
-    let p = src[i..<(i + 8)]
-    // had to split one out so the compiler can type check in time
-    let p1 = UInt64(p[i + 0]) << 0
-    return p1 |
-    (UInt64(p[i + 1]) <<  8) |
-    (UInt64(p[i + 2]) << 16) |
-    (UInt64(p[i + 3]) << 24) |
-    (UInt64(p[i + 4]) << 32) |
-    (UInt64(p[i + 5]) << 40) |
-    (UInt64(p[i + 6]) << 48) |
-    (UInt64(p[i + 7]) << 56)
+func load64(_ src: [128 of UInt8], i: Int) -> UInt64 {
+    var result: UInt64 = 0
+
+    result |= UInt64(src[i + 0])
+    result |= UInt64(src[i + 1]) << 8
+    result |= UInt64(src[i + 2]) << 16
+    result |= UInt64(src[i + 3]) << 24
+    result |= UInt64(src[i + 4]) << 32
+    result |= UInt64(src[i + 5]) << 40
+    result |= UInt64(src[i + 6]) << 48
+    result |= UInt64(src[i + 7]) << 56
+
+    return result
 }
 
 @inlinable

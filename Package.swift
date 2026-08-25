@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "swift-blake2",
+    platforms: [.macOS(.v26)],
     products: [
         .library(name: "BLAKE2", targets: ["BLAKE2"]),
     ],
