@@ -31,7 +31,7 @@ let benchmarks: @Sendable () -> Void = {
 
         benchmark.startMeasurement()
 
-        let result = try! BLAKE2b.hash(data: message)
+        let result = try! BLAKE2b.hash(data: message.span)
         blackHole(result)
 
         benchmark.stopMeasurement()
@@ -42,7 +42,7 @@ let benchmarks: @Sendable () -> Void = {
 
         benchmark.startMeasurement()
 
-        let hash = try! BLAKE2b.hash(data: gameState)
+        let hash = try! BLAKE2b.hash(data: gameState.span)
         blackHole(hash)
 
         benchmark.stopMeasurement()
@@ -54,7 +54,7 @@ let benchmarks: @Sendable () -> Void = {
 
         benchmark.startMeasurement()
 
-        let signature = try! BLAKE2b.hash(data: saveGameData, key: secretServerKey)
+        let signature = try! BLAKE2b.hash(data: saveGameData.span, key: secretServerKey.span)
         blackHole(signature)
 
         benchmark.stopMeasurement()
@@ -71,7 +71,7 @@ let benchmarks: @Sendable () -> Void = {
 
         var bytesProcessed = 0
         while bytesProcessed < totalSize {
-            hasher.update(data: simulatedChunk)
+            hasher.update(data: simulatedChunk.span)
             bytesProcessed += chunkSize
         }
 
