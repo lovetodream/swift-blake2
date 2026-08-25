@@ -58,6 +58,7 @@ jobs:
           swift package --allow-writing-to-directory .benchmarkBaselines/ benchmark baseline update pull_request
       - name: Checkout main
         run: |
+          git reset --hard
           git checkout main
       - name: Run benchmarks for branch 'main'
         if: ${{ env.hasBenchmark == '1' }}
