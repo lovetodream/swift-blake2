@@ -319,23 +319,31 @@ public struct BLAKE2b: Sendable {
         var offset = 0
         let totalCount = data.count
 
-        while offset < totalCount {
-            if self.state.c == Constants.BLOCKBYTES {
-                self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
-                self.compress()
-                self.state.c = 0
+        data.withUnsafeBufferPointer { dataPtr in
+            guard let dataBase = dataPtr.baseAddress else { return }
+
+            while offset < totalCount {
+                if self.state.c == Constants.BLOCKBYTES {
+                    self.incrementCounter(by: UInt64(Constants.BLOCKBYTES))
+                    self.compress()
+                    self.state.c = 0
+                }
+
+                let currentC = self.state.c
+                let spaceLeft = Constants.BLOCKBYTES - currentC
+                let dataLeft = totalCount - offset
+                let amountToCopy = min(spaceLeft, dataLeft)
+
+                withUnsafeMutableBytes(of: &self.state.buf) { bufRawPtr in
+                    let dest = bufRawPtr.baseAddress!.advanced(by: currentC)
+                    let src = dataBase.advanced(by: offset)
+
+                    dest.copyMemory(from: src, byteCount: amountToCopy)
+                }
+
+                self.state.c += amountToCopy
+                offset += amountToCopy
             }
-
-            let spaceLeft = Constants.BLOCKBYTES - self.state.c
-            let dataLeft = totalCount - offset
-            let amountToCopy = min(spaceLeft, dataLeft)
-
-            for i in 0..<amountToCopy {
-                self.state.buf[self.state.c + i] = data[offset + i]
-            }
-
-            self.state.c += amountToCopy
-            offset += amountToCopy
         }
     }
 
