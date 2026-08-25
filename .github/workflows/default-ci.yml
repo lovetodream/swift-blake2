@@ -48,8 +48,7 @@ jobs:
             github.event.pull_request.base.sha || github.event.after }}"
           restore-keys: "${{ matrix.swift-image }}-swiftpm-tests-build-${{ runner.os }}-"
       - name: Build
-        run: swift build --build-tests --enable-code-coverage --traits
-          _IOTracing,DistributedTracingSupport
+        run: swift build --build-tests --enable-code-coverage
       - name: Cache .build
         # if: steps.restore-build.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -58,8 +57,7 @@ jobs:
           key: "${{ matrix.swift-image }}-swiftpm-tests-build-${{ runner.os }}-${{
             github.event.pull_request.base.sha || github.event.after }}"
       - name: Run tests
-        run: swift test --skip-build --enable-code-coverage --traits
-          _IOTracing,DistributedTracingSupport
+        run: swift test --skip-build --enable-code-coverage
       - name: Prepare and Upload Code Coverage
         uses: ./.github/actions/prepare-coverage
         with:
