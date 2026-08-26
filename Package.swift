@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "swift-blake2",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v26), .iOS(.v26), .macCatalyst(.v26), .tvOS(.v26), .visionOS(.v26), .watchOS(.v26)],
     products: [
         .library(name: "BLAKE2", targets: ["BLAKE2"]),
     ],
@@ -18,7 +18,6 @@ let package = Package(
 )
 
 if Context.environment["ENABLE_BLAKE2_BENCHMARKS"] != nil {
-    package.platforms = [.macOS(.v26)]
     package.dependencies.append(
         .package(url: "https://github.com/ordo-one/benchmark", from: "1.0.0")
     )
